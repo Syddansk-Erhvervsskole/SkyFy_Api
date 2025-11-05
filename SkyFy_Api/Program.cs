@@ -32,6 +32,10 @@ builder.Services.AddSingleton<TokenService>();
 builder.Services.AddSingleton<EncryptionService>();
 builder.Services.AddSingleton<SftpService>();
 
+
+
+
+
 // Add services to the container.
 
 builder.Services.AddControllers();
@@ -83,6 +87,9 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.UseStaticFiles(); 
+
 
 app.MapControllers();
 

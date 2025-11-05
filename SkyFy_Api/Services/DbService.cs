@@ -18,7 +18,10 @@ namespace SkyFy_Api.Services
             $"Password={_config["DataServer:Database:Password"]};" +
             $"Database={_config["DataServer:Database:Name"]};";
         }
-
+        public NpgsqlConnection GetConnection()
+        {
+            return new NpgsqlConnection(_connection);
+        }
         public T GetEntityById<T>(long id, string table) where T : new()
         {
             return GetEntityByField<T>("ID", id, table);
@@ -187,7 +190,7 @@ namespace SkyFy_Api.Services
 
                 try
                 {
-                    using (var cmd = new NpgsqlCommand($"SELECT * FROM {table}", conn))
+                    using (var cmd = new NpgsqlCommand($"SELECT * FROM \"{table}\"", conn))
                     using (var dr = cmd.ExecuteReader())
                     {
                         var props = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);

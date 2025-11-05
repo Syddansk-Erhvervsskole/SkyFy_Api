@@ -32,14 +32,13 @@ namespace SkyFy_Api.Controllers
                 if (user == null || sha256Password != user.Password)
                     return Unauthorized(new { message = "Invalid credentials" });
 
-                var token = _jwt.GenerateToken(request.Username, user.ID, "");
+                var token = _jwt.GenerateToken(request.Username, user.ID, "", 24);
 
                 return Ok(new
                 {
                     user = new UserReturnRequest
                     {
                         ID = user.ID,
-                        Name = user.Name,
                         Username = user.Username,
                         Email = user.Email,
                         Data = user.Data

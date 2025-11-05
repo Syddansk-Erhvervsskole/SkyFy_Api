@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Org.BouncyCastle.Asn1.Ocsp;
 using Renci.SshNet;
 using System.IO;
 
@@ -18,8 +19,34 @@ namespace SkyFy_Api.Services
             _username = config["DataServer:Sftp:Username"];
             _password = config["DataServer:Sftp:Password"]; 
         }
+        public async Task<string> DownloadToTempAsync(string remotePath)
+        {
+            var tempFile = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + Path.GetExtension(remotePath));
+            using var client = new SftpClient(_host, _port, _username, _password);
+            client.Connect();
+            await Task.Run(() =>
+            {
+                using var fs = File.Create(tempFile);
+                client.DownloadFile(remotePath, fs);
+            });
+            client.Disconnect();
+            return tempFile;
+        }
+        public void EnsureDirectoryExists(SftpClient client, string path)
+        {
+            var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var current = "";
 
+            for(int i = 0; i< parts.Length; i++)
+            {
+                if (i > 0)
+                    current += "/";
 
+                current +=  parts[i];
+                if (!client.Exists(current))
+                    client.CreateDirectory(current);
+            }
+        }
         public void CreateFolder(string remoteDirectory)
         {
             using (var client = new SftpClient(_host, _port, _username, _password))
@@ -65,18 +92,15 @@ namespace SkyFy_Api.Services
         }
 
 
-        public FileStreamResult GetStream(string remotePath)
+        public SftpClient GetClient()
         {
             var client = new SftpClient(_host, _port, _username, _password);
-            client.Connect();
+  
 
-            var remoteStream = client.OpenRead(remotePath);
-
-            return new FileStreamResult(remoteStream, "audio/mpeg")
-            {
-                EnableRangeProcessing = true
-            };
+            return client;
         }
+
+
 
 
         public void UploadFile(IFormFile formFile, string remotePath)
@@ -101,17 +125,34 @@ namespace SkyFy_Api.Services
         public FileCallbackResult(string contentType, Func<Stream, ActionContext, Task> callback)
             : base(contentType)
         {
-            _callback = callback;
+            _callback = callback ?? throw new ArgumentNullException(nameof(callback));
         }
 
-        public bool EnableRangeProcessing { get; set; }
+        public bool EnableRangeProcessing { get; set; } = false;
 
         public override async Task ExecuteResultAsync(ActionContext context)
         {
-            context.HttpContext.Response.Headers.Add("Accept-Ranges", "bytes");
-            await _callback(context.HttpContext.Response.Body, context);
+            var response = context.HttpContext.Response;
+
+
+            void TrySetHeader(string key, string value)
+            {
+                if (!response.Headers.ContainsKey(key))
+                    response.Headers[key] = value;
+            }
+
+
+            TrySetHeader("Content-Type", ContentType.ToString());
+
+            if (EnableRangeProcessing)
+            {
+                TrySetHeader("Accept-Ranges", "bytes");
+            }
+
+            await _callback(response.Body, context);
         }
     }
+
 
 
 }

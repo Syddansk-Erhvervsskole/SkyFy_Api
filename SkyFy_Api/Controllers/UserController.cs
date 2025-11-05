@@ -82,7 +82,6 @@ namespace SkyFy_Api.Controllers
     public class UserRequest
     {
         public long ID { get; set; }
-        public string Name { get; set; }
         public string Email { get; set; }
         public string Username { get; set; }
         public string Password { get; set; }
@@ -93,7 +92,6 @@ namespace SkyFy_Api.Controllers
     public class UserReturnRequest
     {
         public long ID { get; set; }
-        public string Name { get; set; }
         public string Email { get; set; }
         public string Username { get; set; }
         public string Data { get; set; }
@@ -102,7 +100,6 @@ namespace SkyFy_Api.Controllers
 
     public class CreateUserRequest
     {
-        public string Name { get; set; }
         public string Email { get; set; }
         public string Username { get; set; }
         public string Password { get; set; }
@@ -111,7 +108,6 @@ namespace SkyFy_Api.Controllers
 
     public class UpdateUserRequest
     {
-        public string Name { get; set; }
         public string Email { get; set; }
         public string Username { get; set; }
         public JsonDocument Data { get; set; }
