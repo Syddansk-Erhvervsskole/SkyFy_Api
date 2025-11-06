@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using Org.BouncyCastle.Asn1.Ocsp;
 using Renci.SshNet;
 using SkyFy_Api.Models.Content;
 using SkyFy_Api.Services;
@@ -23,6 +24,37 @@ namespace SkyFy_Api.Controllers
             _sftpService = Sftp;
             _env = env;
         }
+
+
+        [HttpGet("{id}/Cover")]
+        public async Task<IActionResult> GetCover(long id)
+        {
+            try
+            {
+                using var client = _sftpService.GetClient();
+                client.Connect();
+
+                string remotePath = $"{id}/cover.jpg";
+
+                if (!client.Exists(remotePath))
+                {
+                    client.Disconnect();
+                    return NotFound("Cover not found");
+                }
+
+                using var ms = new MemoryStream();
+                client.DownloadFile(remotePath, ms);
+                client.Disconnect();
+
+                var fileBytes = ms.ToArray();
+                return File(fileBytes, "image/jpeg");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Error downloading cover: {ex.Message}");
+            }
+        }
+
 
 
         [HttpGet("{id}/playlist.m3u8")]
@@ -95,7 +127,6 @@ namespace SkyFy_Api.Controllers
 
 
         [HttpGet("{id}/hls/{segment}")]
-
         public IActionResult GetSegment(long id, string segment)
         {
             using var client = _sftpService.GetClient();
@@ -242,7 +273,7 @@ namespace SkyFy_Api.Controllers
 
             using (var conn = _dbService.GetConnection())
             {
-                var contentList = new List<ContentClass>();
+                var contentList = new List<ContentFinalClass>();
                 await conn.OpenAsync();
 
                 await using var cmd = new NpgsqlCommand(sql, conn);
@@ -251,11 +282,12 @@ namespace SkyFy_Api.Controllers
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    contentList.Add(new ContentClass
+                    contentList.Add(new ContentFinalClass
                     {
                         ID = reader.GetInt64(0),
                         Name = reader.GetString(1),
-                        User_ID = reader.GetInt64(2)
+                        User_ID = reader.GetInt64(2),
+                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover"
                     });
                 }
 
@@ -267,7 +299,7 @@ namespace SkyFy_Api.Controllers
         [HttpGet("weather/{weatherCode}/{limit}")]
         public async Task<IActionResult> GetTopContentByWeather(int weatherCode, int limit)
         {
-            var contentList = new List<ContentClass>();
+            var contentList = new List<ContentFinalClass>();
 
             const string sql = @"
                 SELECT 
@@ -294,11 +326,12 @@ namespace SkyFy_Api.Controllers
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    var item = new ContentClass
+                    var item = new ContentFinalClass
                     {
                         ID = reader.GetInt64(0),
                         Name = reader.GetString(1),
-                        User_ID = reader.GetInt64(2)
+                        User_ID = reader.GetInt64(2),
+                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover"
                     };
 
                     contentList.Add(item);
@@ -316,7 +349,25 @@ namespace SkyFy_Api.Controllers
     {
         public long ID { get; set; }
 
+        public ContentFinalClass ConvertToFinalClass(HttpRequest request)
+        {
+            var finalClass = new ContentFinalClass();
+            finalClass.ID = this.ID;
+            finalClass.Name = this.Name;
+            finalClass.User_ID = this.User_ID;
+            finalClass.Cover_Art = $"{request.Scheme}://{request.Host}/Content/{ID}/Cover";
+            return finalClass;
+
+        }
+
     }
+    public class ContentFinalClass : ContentBaseRequest
+    {
+        public long ID { get; set; }
+        public string Cover_Art { get; set; }
+    }
+
+
 
     public class ContentMediaClass : ContentClass
     {

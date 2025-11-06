@@ -29,33 +29,41 @@ namespace SkyFy_Api.Services
 
         public T GetEntityByField<T>(string field, object value, string table) where T : new()
         {
+            return GetEntitiesByField<T>(field, value, table).FirstOrDefault();
+        }
+
+        public List<T> GetEntitiesByField<T>(string field, object value, string table) where T : new()
+        {
+            var result = new List<T>();
+
             using (var conn = new NpgsqlConnection(_connection))
             {
                 conn.Open();
 
                 try
                 {
-                    using (var cmd = new NpgsqlCommand($"SELECT * FROM \"{table}\" WHERE \"{field}\" = @id", conn))
+                    using (var cmd = new NpgsqlCommand($"SELECT * FROM \"{table}\" WHERE \"{field}\" = @val", conn))
                     {
-                        cmd.Parameters.AddWithValue("@id", value);
+                        cmd.Parameters.AddWithValue("@val", value);
 
                         using (var reader = cmd.ExecuteReader())
                         {
-                            if (!reader.Read())
-                                return default;
-
-                            var entity = new T();
                             var props = typeof(T).GetProperties();
 
-                            foreach (var prop in props)
+                            while (reader.Read())
                             {
-                                if (!reader.HasColumn(prop.Name) || reader[prop.Name] is DBNull)
-                                    continue;
+                                var entity = new T();
 
-                                prop.SetValue(entity, reader[prop.Name]);
+                                foreach (var prop in props)
+                                {
+                                    if (!reader.HasColumn(prop.Name) || reader[prop.Name] is DBNull)
+                                        continue;
+
+                                    prop.SetValue(entity, reader[prop.Name]);
+                                }
+
+                                result.Add(entity);
                             }
-
-                            return entity;
                         }
                     }
                 }
@@ -64,7 +72,10 @@ namespace SkyFy_Api.Services
                     throw new Exception("Database connection error: " + ex.Message);
                 }
             }
+
+            return result;
         }
+
 
         public bool DeleteEntity(long id, string table)
         {
