@@ -55,29 +55,26 @@ namespace SkyFy_Api.Controllers
             }
         }
 
-
-
         [HttpGet("{id}/playlist.m3u8")]
         [Authorize]
         public async Task<IActionResult> GetPlaylist(long id)
         {
-  
-            if (!Request.Headers.Keys.Contains("skip_weather"))
+            if (Request.Headers.ContainsKey("weather_code"))
             {
+                var weatherCode = Request.Headers.FirstOrDefault(x => x.Key == "weather_code");
                 var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-                var weatherCode = Request.Headers.FirstOrDefault(x => x.Key == "weather_code").Value;
                 if (string.IsNullOrEmpty(userIdString))
                     return BadRequest("Could not find User ID from token");
 
-                if (string.IsNullOrEmpty(weatherCode))
+                if (string.IsNullOrEmpty(weatherCode.Value))
                     return BadRequest("Weather code header missing");
 
                 var stream = new Content_Stream_Create()
                 {
                     Content_ID = id,
                     User_ID = long.Parse(userIdString),
-                    WeatherCode = int.Parse(weatherCode)
+                    WeatherCode = int.Parse(weatherCode.Value)
                 };
 
                 _dbService.CreateEntity(stream, "Streams");
@@ -125,7 +122,6 @@ namespace SkyFy_Api.Controllers
             return Content(updatedPlaylist, "application/vnd.apple.mpegurl");
         }
 
-
         [HttpGet("{id}/hls/{segment}")]
         public IActionResult GetSegment(long id, string segment)
         {
@@ -156,8 +152,6 @@ namespace SkyFy_Api.Controllers
                 System.IO.File.Delete(tempTs);
             });
         }
-      
-
 
         [HttpPut("{id}/upload")]
         public async Task<IActionResult> Upload(long id, IFormFile file)
@@ -175,7 +169,7 @@ namespace SkyFy_Api.Controllers
 
             await HlsConverter.ConvertMp3ToHlsAsync(tempMp3, tempHlsDir, segmentSeconds: 5);
 
- 
+
             string remoteDir = $"{id}/hls";
 
             using (var client = _sftpService.GetClient())
@@ -203,9 +197,6 @@ namespace SkyFy_Api.Controllers
             return Ok(new { playlist = playlistUrl });
         }
 
-
-
-
         [HttpPost]
         public IActionResult Create([FromBody] ContentCreateRequest content)
         {
@@ -218,7 +209,7 @@ namespace SkyFy_Api.Controllers
             };
             string ID = _dbService.CreateEntity(contentEnd, "Content");
 
-            _sftpService.CreateFolder(ID);         
+            _sftpService.CreateFolder(ID);
 
             return Ok(new { Message = "Created sucessfully", ID });
         }
@@ -227,24 +218,23 @@ namespace SkyFy_Api.Controllers
         public IActionResult GetAll()
         {
             var data = _dbService.GetData<ContentClass>("Content");
-
-
             return Ok(data);
         }
 
         [HttpDelete("{id}")]
         [Authorize]
-        public IActionResult Delete(long id) { 
+        public IActionResult Delete(long id)
+        {
 
             var content = _dbService.GetEntityById<ContentClass>(id, "Content");
 
             var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-            if(string.IsNullOrEmpty(userId) || content == null)
+            if (string.IsNullOrEmpty(userId) || content == null)
             {
                 return NotFound();
             }
-            else if(content.User_ID.ToString() != userId)
+            else if (content.User_ID.ToString() != userId)
             {
                 return Unauthorized();
             }
@@ -264,12 +254,28 @@ namespace SkyFy_Api.Controllers
         [HttpGet("Search/{name}")]
         public async Task<IActionResult> Search(string name)
         {
+            //const string sql = @"
+            //                    SELECT ""ID"", ""Name"", ""User_ID""
+            //                    FROM ""Content""
+            //                    WHERE ""Name"" ILIKE '%' || @searchName || '%'
+            //                    LIMIT 20;
+            //                ";
+
             const string sql = @"
-                                SELECT ""ID"", ""Name"", ""User_ID""
-                                FROM ""Content""
-                                WHERE ""Name"" ILIKE '%' || @searchName || '%'
-                                LIMIT 20;
-                            ";
+                SELECT 
+                    c.""ID"", 
+                    c.""Name"", 
+                    c.""User_ID"",
+                    CASE 
+                        WHEN lc.""ID"" IS NOT NULL THEN TRUE 
+                        ELSE FALSE 
+                    END AS is_liked
+                FROM ""Content"" c
+                LEFT JOIN ""LikedContent"" lc 
+                    ON lc.""Content_ID"" = c.""ID"" AND lc.""User_ID"" = c.""User_ID""
+                WHERE c.""Name"" ILIKE '%' || @searchName || '%'
+                LIMIT 20;
+            ";
 
             using (var conn = _dbService.GetConnection())
             {
@@ -287,7 +293,8 @@ namespace SkyFy_Api.Controllers
                         ID = reader.GetInt64(0),
                         Name = reader.GetString(1),
                         User_ID = reader.GetInt64(2),
-                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover"
+                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover",
+                        Liked = reader.GetBoolean(3)
                     });
                 }
 
@@ -295,26 +302,46 @@ namespace SkyFy_Api.Controllers
             }
         }
 
-
         [HttpGet("weather/{weatherCode}/{limit}")]
         public async Task<IActionResult> GetTopContentByWeather(int weatherCode, int limit)
         {
             var contentList = new List<ContentFinalClass>();
+
+            //const string sql = @"
+            //    SELECT 
+            //        c.""ID"", 
+            //        c.""Name"", 
+            //        c.""User_ID"", 
+            //        COUNT(s.""ID"") AS stream_count
+            //    FROM ""Streams"" s
+            //    JOIN ""Content"" c ON c.""ID"" = s.""Content_ID""
+            //    WHERE s.""WeatherCode"" = @weatherCode
+            //      AND s.""Stream_Date""::date = CURRENT_DATE
+            //    GROUP BY c.""ID"", c.""Name"", c.""User_ID""
+            //    ORDER BY stream_count DESC
+            //    LIMIT @limit;
+            //    ";
 
             const string sql = @"
                 SELECT 
                     c.""ID"", 
                     c.""Name"", 
                     c.""User_ID"", 
-                    COUNT(s.""ID"") AS stream_count
+                    COUNT(s.""ID"") AS stream_count,
+                    CASE 
+                        WHEN lc.""ID"" IS NOT NULL THEN TRUE 
+                        ELSE FALSE 
+                    END AS is_liked
                 FROM ""Streams"" s
                 JOIN ""Content"" c ON c.""ID"" = s.""Content_ID""
+                LEFT JOIN ""LikedContent"" lc 
+                    ON lc.""Content_ID"" = c.""ID"" AND lc.""User_ID"" = s.""User_ID""
                 WHERE s.""WeatherCode"" = @weatherCode
-                  AND s.""Stream_Date""::date = CURRENT_DATE
-                GROUP BY c.""ID"", c.""Name"", c.""User_ID""
+                    AND s.""Stream_Date""::date = CURRENT_DATE
+                GROUP BY c.""ID"", c.""Name"", c.""User_ID"", is_liked
                 ORDER BY stream_count DESC
                 LIMIT @limit;
-                ";
+            ";
 
             using (var conn = _dbService.GetConnection())
             {
@@ -331,18 +358,15 @@ namespace SkyFy_Api.Controllers
                         ID = reader.GetInt64(0),
                         Name = reader.GetString(1),
                         User_ID = reader.GetInt64(2),
-                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover"
+                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover",
+                        Liked = reader.GetBoolean(3)
                     };
 
                     contentList.Add(item);
                 }
-
                 return Ok(contentList);
             }
-
-        
         }
-
     }
 
     public class ContentClass : ContentBaseRequest
@@ -357,17 +381,15 @@ namespace SkyFy_Api.Controllers
             finalClass.User_ID = this.User_ID;
             finalClass.Cover_Art = $"{request.Scheme}://{request.Host}/Content/{ID}/Cover";
             return finalClass;
-
         }
-
     }
+
     public class ContentFinalClass : ContentBaseRequest
     {
         public long ID { get; set; }
         public string Cover_Art { get; set; }
+        public bool Liked { get; set; }
     }
-
-
 
     public class ContentMediaClass : ContentClass
     {
