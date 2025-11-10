@@ -163,22 +163,40 @@ namespace SkyFy_Api.Controllers
         }
 
 
-        [HttpDelete("remove/content/{playlist_content_id}")]
+        [HttpDelete("{playlist_id}/remove/content/{content_id}")]
         [Authorize]
-        public IActionResult PlaylistRemoveContent(long playlist_content_id)
+        public IActionResult PlaylistRemoveContent(long playlist_id, long content_id)
         {
-            var userId = RequestHelper.GetUserIDFromClaims(User);
+            var userId = long.Parse(RequestHelper.GetUserIDFromClaims(User));
+
             try
             {
-                _dbService.DeleteEntity(playlist_content_id, "PlaylistContent");
+                const string sql = @"
+            DELETE FROM ""PlaylistContent""
+            WHERE ""Playlist_ID"" = @playlist_id
+              AND ""Content_ID"" = @content_id;
+        ";
 
-                return Ok();
+                using var conn = _dbService.GetConnection();
+                conn.Open();
+
+                using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@playlist_id", playlist_id);
+                cmd.Parameters.AddWithValue("@content_id", content_id);
+
+                int rows = cmd.ExecuteNonQuery();
+
+                if (rows == 0)
+                    return NotFound(new { message = "Song not in playlist" });
+
+                return Ok(new { message = "Song removed from playlist" });
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
         }
+
 
     }
 
