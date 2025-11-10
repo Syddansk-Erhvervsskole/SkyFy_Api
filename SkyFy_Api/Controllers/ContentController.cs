@@ -55,25 +55,25 @@ namespace SkyFy_Api.Controllers
             }
         }
 
-        [HttpGet("{id}/{weather_code}/playlist.m3u8")]
+        [HttpGet("{id}/{weatherCode}/playlist.m3u8")]
         [Authorize]
-        public async Task<IActionResult> GetPlaylist(long id, string weather_code)
+        public async Task<IActionResult> GetPlaylist(long id, string weatherCode)
         {
-            if (!String.IsNullOrEmpty(weather_code))
+            if (!String.IsNullOrEmpty(weatherCode))
             {
                 var userIdString = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
                 if (string.IsNullOrEmpty(userIdString))
                     return BadRequest("Could not find User ID from token");
 
-                if (string.IsNullOrEmpty(weather_code))
+                if (string.IsNullOrEmpty(weatherCode))
                     return BadRequest("Weather code header missing");
 
                 var stream = new Content_Stream_Create()
                 {
                     Content_ID = id,
                     User_ID = long.Parse(userIdString),
-                    WeatherCode = int.Parse(weather_code)
+                    WeatherCode = int.Parse(weatherCode)
                 };
 
                 _dbService.CreateEntity(stream, "Streams");
