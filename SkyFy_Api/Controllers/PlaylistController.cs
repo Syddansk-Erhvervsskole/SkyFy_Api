@@ -19,12 +19,59 @@ namespace SkyFy_Api.Controllers
 
         [HttpGet("Content/{id}")]
         [Authorize]
-        public IActionResult GetPlaylistContent(long id)
+        public async Task<IActionResult> GetPlaylistContent(long id)
         {
-            var result = _dbService.GetEntitiesByField<Playlist_Content>("Playlist_ID", id, "PlaylistContent");
-            return Ok(result);
-        }
+            try
+            {
+                var userId = long.Parse(RequestHelper.GetUserIDFromClaims(User));
 
+                const string sql = @"
+            SELECT 
+                c.""ID"",
+                c.""Name"",
+                c.""User_ID"",
+                CASE 
+                    WHEN lc.""ID"" IS NOT NULL THEN TRUE 
+                    ELSE FALSE 
+                END AS is_liked
+            FROM ""PlaylistContent"" pc
+            JOIN ""Content"" c 
+                ON c.""ID"" = pc.""Content_ID""
+            LEFT JOIN ""LikedContent"" lc 
+                ON lc.""Content_ID"" = c.""ID"" 
+               AND lc.""User_ID"" = @userId
+            WHERE pc.""Playlist_ID"" = @playlistId;
+        ";
+
+                using var conn = _dbService.GetConnection();
+                await conn.OpenAsync();
+
+                var songs = new List<ContentFinalClass>();
+
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@playlistId", id);
+                cmd.Parameters.AddWithValue("@userId", userId);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    songs.Add(new ContentFinalClass
+                    {
+                        ID = reader.GetInt64(0),
+                        Name = reader.GetString(1),
+                        User_ID = reader.GetInt64(2),
+                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover",
+                        Liked = reader.GetBoolean(3)
+                    });
+                }
+
+                return Ok(songs);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
 
 
         [HttpGet("ById/{id}")]
