@@ -306,21 +306,6 @@ namespace SkyFy_Api.Controllers
         {
             var contentList = new List<ContentFinalClass>();
 
-            //const string sql = @"
-            //    SELECT 
-            //        c.""ID"", 
-            //        c.""Name"", 
-            //        c.""User_ID"", 
-            //        COUNT(s.""ID"") AS stream_count
-            //    FROM ""Streams"" s
-            //    JOIN ""Content"" c ON c.""ID"" = s.""Content_ID""
-            //    WHERE s.""WeatherCode"" = @weatherCode
-            //      AND s.""Stream_Date""::date = CURRENT_DATE
-            //    GROUP BY c.""ID"", c.""Name"", c.""User_ID""
-            //    ORDER BY stream_count DESC
-            //    LIMIT @limit;
-            //    ";
-
             const string sql = @"
                 SELECT 
                     c.""ID"", 
@@ -358,7 +343,7 @@ namespace SkyFy_Api.Controllers
                         Name = reader.GetString(1),
                         User_ID = reader.GetInt64(2),
                         Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover",
-                        Liked = reader.GetBoolean(3)
+                        Liked = reader.GetBoolean(4)
                     };
 
                     contentList.Add(item);
