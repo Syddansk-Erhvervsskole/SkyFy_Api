@@ -19,7 +19,7 @@
       },
       "dotnetRunMessages": true,
       //"https": 0.0.0.0:7225;
-      "applicationUrl": "http://0.0.0.0:5298,https://0.0.0.0:7225"
+      "applicationUrl": "http://0.0.0.0:5298;https://0.0.0.0:7225"
     },
     "IIS Express": {
       "commandName": "IISExpress",

@@ -14,54 +14,55 @@ namespace SkyFy_Api.Controllers
         {
             _dbService = dbService;
         }
-      [HttpGet()]
-    [Authorize]
-    public async Task<IActionResult> GetLikes()
-    {
-        try
+
+        [HttpGet()]
+        [Authorize]
+        public async Task<IActionResult> GetLikes()
         {
-            var userId = long.Parse(RequestHelper.GetUserIDFromClaims(User));
-
-            const string sql = @"
-                SELECT 
-                    c.""ID"", 
-                    c.""Name"",
-                    c.""User_ID"",
-                    TRUE AS is_liked
-                FROM ""LikedContent"" lc
-                JOIN ""Content"" c 
-                    ON c.""ID"" = lc.""Content_ID""
-                WHERE lc.""User_ID"" = @userId;
-            ";
-
-            using var conn = _dbService.GetConnection();
-            await conn.OpenAsync();
-
-            var likedSongs = new List<ContentFinalClass>();
-
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@userId", userId);
-
-            using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+            try
             {
-                likedSongs.Add(new ContentFinalClass
-                {
-                    ID = reader.GetInt64(0),
-                    Name = reader.GetString(1),
-                    User_ID = reader.GetInt64(2),
-                    Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover",
-                    Liked = reader.GetBoolean(3) // always true
-                });
-            }
+                var userId = long.Parse(RequestHelper.GetUserIDFromClaims(User));
 
-            return Ok(likedSongs);
+                const string sql = @"
+                    SELECT 
+                        c.""ID"", 
+                        c.""Name"",
+                        c.""User_ID"",
+                        TRUE AS is_liked
+                    FROM ""LikedContent"" lc
+                    JOIN ""Content"" c 
+                        ON c.""ID"" = lc.""Content_ID""
+                    WHERE lc.""User_ID"" = @userId;
+                ";
+
+                using var conn = _dbService.GetConnection();
+                await conn.OpenAsync();
+
+                var likedSongs = new List<ContentFinalClass>();
+
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@userId", userId);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    likedSongs.Add(new ContentFinalClass
+                    {
+                        ID = reader.GetInt64(0),
+                        Name = reader.GetString(1),
+                        User_ID = reader.GetInt64(2),
+                        Cover_Art = $"{Request.Scheme}://{Request.Host}/Content/{reader.GetInt64(0)}/Cover",
+                        Liked = reader.GetBoolean(3) // always true
+                    });
+                }
+
+                return Ok(likedSongs);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-    }
 
 
         [HttpPost("{id}")]

@@ -18,10 +18,12 @@ namespace SkyFy_Api.Services
             $"Password={_config["DataServer:Database:Password"]};" +
             $"Database={_config["DataServer:Database:Name"]};";
         }
+
         public NpgsqlConnection GetConnection()
         {
             return new NpgsqlConnection(_connection);
         }
+
         public T GetEntityById<T>(long id, string table) where T : new()
         {
             return GetEntityByField<T>("ID", id, table);
@@ -76,7 +78,6 @@ namespace SkyFy_Api.Services
             return result;
         }
 
-
         public bool DeleteEntity(long id, string table)
         {
             using (var conn = new NpgsqlConnection(_connection))
@@ -101,8 +102,7 @@ namespace SkyFy_Api.Services
             }
             return true;
         }
-
-
+        
         public T UpdateEntity<T>(long id, T elem, string table) where T : class
         {
             using (var conn = new NpgsqlConnection(_connection))
@@ -139,6 +139,7 @@ namespace SkyFy_Api.Services
             }
             return elem;
         }
+
         public string CreateEntity<T>(T elem, string table) where T : class
         {
             using (var conn = new NpgsqlConnection(_connection))
