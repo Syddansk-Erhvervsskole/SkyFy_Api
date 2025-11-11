@@ -196,6 +196,18 @@ namespace SkyFy_Api.Controllers
             return Ok(new { playlist = playlistUrl });
         }
 
+        [HttpPut("{id}/upload/cover")]
+        public async Task<IActionResult> UploadCover(long id, [FromBody] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file");
+        
+            
+            _sftpService.UploadFile(file, $"{id}/cover.jpg");
+
+            return Ok();
+        }
+
         [HttpPost]
         public IActionResult Create([FromBody] ContentCreateRequest content)
         {
@@ -212,6 +224,88 @@ namespace SkyFy_Api.Controllers
 
             return Ok(new { Message = "Created sucessfully", ID });
         }
+
+
+        //Call for uploading content with all attachments
+        [HttpPost("upload/all")]
+        [Authorize]
+        //Skip swagger as swagger cant handle multiple file inputs 
+        [ApiExplorerSettings(IgnoreApi = true)]
+        [RequestSizeLimit(500_000_000)]
+        public async Task<IActionResult> UploadAll([FromForm] string name,[FromForm] IFormFile song,[FromForm] IFormFile cover)
+        {
+            var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+
+            using var conn = _dbService.GetConnection();
+            await conn.OpenAsync();
+
+            using var tx = conn.BeginTransaction();
+
+            string contentId = string.Empty;
+
+            try
+            {
+     
+                var sql = @"INSERT INTO ""Content"" (""Name"", ""User_ID"") VALUES (@name, @userId) RETURNING ""ID"";";
+                using (var cmd = new NpgsqlCommand(sql, conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("@name", name);
+                    cmd.Parameters.AddWithValue("@userId", userId);
+
+                    contentId = (await cmd.ExecuteScalarAsync())!.ToString();
+                }
+
+ 
+                _sftpService.CreateFolder(contentId);
+
+  
+                _sftpService.UploadFile(cover, $"{contentId}/cover.jpg");
+
+                var tempMp3 = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.mp3");
+                await using (var fs = System.IO.File.Create(tempMp3))
+                    await song.CopyToAsync(fs);
+
+                var tempHlsDir = Path.Combine(Path.GetTempPath(), $"hls_{contentId}_{Guid.NewGuid()}");
+                Directory.CreateDirectory(tempHlsDir);
+
+                await HlsConverter.ConvertMp3ToHlsAsync(tempMp3, tempHlsDir);
+
+                using (var client = _sftpService.GetClient())
+                {
+                    client.Connect();
+                    string remoteDir = $"{contentId}/hls";
+                    _sftpService.EnsureDirectoryExists(client, remoteDir);
+
+                    foreach (var f in Directory.GetFiles(tempHlsDir))
+                    {
+                        using var local = System.IO.File.OpenRead(f);
+                        client.UploadFile(local, $"{remoteDir}/{Path.GetFileName(f)}");
+                    }
+
+                    client.Disconnect();
+                }
+
+     
+                System.IO.File.Delete(tempMp3);
+                Directory.Delete(tempHlsDir, true);
+
+                await tx.CommitAsync();
+
+                return Ok(new { id = contentId, message = "Uploaded successfully" });
+            }
+            catch (Exception ex)
+            {
+    
+                await tx.RollbackAsync();
+
+          
+                try { _sftpService.DeleteFolder(contentId); } catch { }
+
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+
 
         [HttpGet("all")]
         public IActionResult GetAll()

@@ -137,6 +137,22 @@ namespace SkyFy_Api.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
+        [HttpDelete("{id}")]
+        [Authorize]
+        public IActionResult CreatePlaylist(long id)
+        {
+            var userId = RequestHelper.GetUserIDFromClaims(User);
+            try
+            {
+                _dbService.DeleteEntity(id, "Playlists");
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
 
 
         [HttpPost("{playlist_id}/add/content/{content_id}")]
@@ -171,11 +187,7 @@ namespace SkyFy_Api.Controllers
 
             try
             {
-                const string sql = @"
-            DELETE FROM ""PlaylistContent""
-            WHERE ""Playlist_ID"" = @playlist_id
-              AND ""Content_ID"" = @content_id;
-        ";
+                const string sql = @"DELETE FROM ""PlaylistContent"" WHERE ""Playlist_ID"" = @playlist_id AND ""Content_ID"" = @content_id;";
 
                 using var conn = _dbService.GetConnection();
                 conn.Open();
