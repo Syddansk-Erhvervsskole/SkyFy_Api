@@ -14,9 +14,9 @@ namespace SkyFy_Api
 
             var args =
                 $"-y -i \"{inputMp3Path}\" " +
-                $"-c:a aac -b:a 192k " +                 // transcode to AAC for broader compatibility
-                $"-vn -hls_time {segmentSeconds} " +     // segment length
-                "-hls_playlist_type vod " +              // VOD playlist (finite)
+                $"-c:a aac -b:a 192k " +               
+                $"-vn -hls_time {segmentSeconds} " +  
+                "-hls_playlist_type vod " +          
                 "-hls_segment_filename \"" + Path.Combine(outputFolder, "seg%05d.ts") + "\" " +
                 $"\"{playlistPath}\"";
 
@@ -31,7 +31,7 @@ namespace SkyFy_Api
             };
 
             using var proc = Process.Start(psi)!;
-            string stderr = await proc.StandardError.ReadToEndAsync(); // useful for debugging
+            string stderr = await proc.StandardError.ReadToEndAsync(); 
             await proc.WaitForExitAsync();
 
             if (proc.ExitCode != 0 || !File.Exists(playlistPath))

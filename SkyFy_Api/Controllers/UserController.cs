@@ -27,12 +27,15 @@ namespace SkyFy_Api.Controllers
             return Ok(createUserRequest);
         }
 
-        [HttpDelete("{id}")]
-        public IActionResult Delete(long id)
+        [HttpDelete("")]
+        [Authorize]
+        public IActionResult Delete()
         {
-           _dbService.DeleteEntity(id, "Users");
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-            return Ok($"User with id {id} has been deleted");
+            _dbService.DeleteEntity(long.Parse(userId), "Users");
+
+            return Ok($"User with id {userId} has been deleted");
         }
 
         [HttpPut("{id}")]

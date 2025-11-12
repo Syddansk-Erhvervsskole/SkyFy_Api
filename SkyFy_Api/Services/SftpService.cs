@@ -117,6 +117,17 @@ namespace SkyFy_Api.Services
                 client.Disconnect();
             }
         }
+
+        public void UploadFile(MemoryStream stream, string remotePath)
+        {
+            using (var client = new SftpClient(_host, _port, _username, _password))
+            {
+                client.Connect();
+
+                client.UploadFile(stream, remotePath);
+                client.Disconnect();
+            }
+        }
     }
     public class FileCallbackResult : FileResult
     {

@@ -3,11 +3,16 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using Org.BouncyCastle.Asn1.Ocsp;
 using Renci.SshNet;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 using SkyFy_Api.Models.Content;
 using SkyFy_Api.Services;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace SkyFy_Api.Controllers
 {
@@ -229,37 +234,71 @@ namespace SkyFy_Api.Controllers
         //Call for uploading content with all attachments
         [HttpPost("upload/all")]
         [Authorize]
-        //Skip swagger as swagger cant handle multiple file inputs 
         [ApiExplorerSettings(IgnoreApi = true)]
         [RequestSizeLimit(500_000_000)]
-        public async Task<IActionResult> UploadAll([FromForm] string name,[FromForm] IFormFile song,[FromForm] IFormFile cover)
+        public async Task<IActionResult> UploadAll(
+    [FromForm] string name,
+    [FromForm] IFormFile song,
+    [FromForm] IFormFile cover)
         {
             var userId = long.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
 
             using var conn = _dbService.GetConnection();
             await conn.OpenAsync();
-
             using var tx = conn.BeginTransaction();
 
             string contentId = string.Empty;
 
             try
             {
-     
+      
                 var sql = @"INSERT INTO ""Content"" (""Name"", ""User_ID"") VALUES (@name, @userId) RETURNING ""ID"";";
                 using (var cmd = new NpgsqlCommand(sql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("@name", name);
                     cmd.Parameters.AddWithValue("@userId", userId);
-
                     contentId = (await cmd.ExecuteScalarAsync())!.ToString();
                 }
 
- 
                 _sftpService.CreateFolder(contentId);
 
-  
-                _sftpService.UploadFile(cover, $"{contentId}/cover.jpg");
+       
+                if (cover == null || cover.Length == 0)
+                    throw new Exception("Cover image is empty.");
+
+                if (!cover.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) &&
+                    !cover.FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new Exception("Only JPG files are allowed.");
+                }
+
+
+                await using var uploadStream = cover.OpenReadStream();
+                using var img = await SixLabors.ImageSharp.Image.LoadAsync(uploadStream);
+
+                const int maxSize = 250;
+
+                if (img.Width > maxSize || img.Height > maxSize)
+                {
+                    double scale = Math.Min((double)maxSize / img.Width, (double)maxSize / img.Height);
+                    int newW = (int)Math.Round(img.Width * scale);
+                    int newH = (int)Math.Round(img.Height * scale);
+
+                    img.Mutate(x => x.Resize(new ResizeOptions
+                    {
+                        Mode = ResizeMode.Max,
+                        Size = new Size(newW, newH)
+                    }));
+                }
+
+                using var ms = new MemoryStream();
+                await img.SaveAsJpegAsync(ms, new JpegEncoder
+                {
+                    Quality = 75 
+                });
+                ms.Position = 0;
+
+                _sftpService.UploadFile(ms, $"{contentId}/cover.jpg");
 
                 var tempMp3 = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.mp3");
                 await using (var fs = System.IO.File.Create(tempMp3))
@@ -285,7 +324,6 @@ namespace SkyFy_Api.Controllers
                     client.Disconnect();
                 }
 
-     
                 System.IO.File.Delete(tempMp3);
                 Directory.Delete(tempHlsDir, true);
 
@@ -295,12 +333,8 @@ namespace SkyFy_Api.Controllers
             }
             catch (Exception ex)
             {
-    
                 await tx.RollbackAsync();
-
-          
                 try { _sftpService.DeleteFolder(contentId); } catch { }
-
                 return BadRequest(new { message = ex.Message });
             }
         }
